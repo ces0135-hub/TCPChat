@@ -28,6 +28,11 @@ struct ClientState {
     nickname: String,
 }
 
+// Helper function to check for prohibited message content
+fn contains_prohibited_content(content: &str) -> bool {
+    content.to_lowercase().contains("i hate professor")
+}
+
 // Function to handle incoming messages from the server
 fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
     let mut reader = BufReader::new(stream);
@@ -99,6 +104,11 @@ fn handle_user_input(
     while state.lock().unwrap().connected {
         if let Some(line) = lines.next() {
             let input = line?;
+            
+            // Check for prohibited content in any input
+            if contains_prohibited_content(&input) {
+                println!("Warning: Your message contains a prohibited phrase. You will be disconnected.");
+            }
             
             // Process the input
             if input.starts_with('\\') {
@@ -191,12 +201,6 @@ fn handle_user_input(
                 // Regular chat message
                 // 메시지가 비어있지 않을 경우에만 처리
                 if !input.trim().is_empty() {
-                    // "i hate professor" 검사
-                    if input.to_lowercase() == "i hate professor" {
-                        // 금지된 메시지 전송 전에 사용자에게 알림
-                        println!("Sending prohibited message. You will be disconnected soon.");
-                    }
-                    
                     // 메시지 전송
                     stream.write_all(&[CMD_CHAT])?;
                     stream.write_all(input.as_bytes())?;
@@ -208,11 +212,8 @@ fn handle_user_input(
                         process::exit(1);
                     }
                     
-                    // 자신의 메시지를 화면에 표시 (단, 서버에서 끊어버릴 'i hate professor'는 제외)
-                    if input.to_lowercase() != "i hate professor" {
-                        // println!("{}", input);
-                    } else {
-                        // 금지된 메시지 보내고 잠시 대기 후 종료 준비
+                    // 금지된 메시지 보내고 잠시 대기 후 종료 준비
+                    if contains_prohibited_content(&input) {
                         thread::sleep(Duration::from_millis(500));
                     }
                 }

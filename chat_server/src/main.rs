@@ -1,5 +1,5 @@
-// Name: BaekSungHyun
-// Student ID: 20220417
+// Name: Your Name
+// Student ID: Your Student ID
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Write};
@@ -54,6 +54,11 @@ impl Client {
     }
 }
 
+// Helper function to check for prohibited message content
+fn contains_prohibited_content(content: &str) -> bool {
+    content.to_lowercase().contains("i hate professor")
+}
+
 // 모든 클라이언트에게 메시지를 브로드캐스트하는 함수
 fn broadcast_to_all(
     clients: &HashMap<String, Client>,
@@ -71,6 +76,45 @@ fn broadcast_to_all(
             eprintln!("Error broadcasting to {}: {}", nickname, e);
         }
     }
+}
+
+// Handle user disconnection due to prohibited content
+fn disconnect_for_prohibited_content(
+    stream: &TcpStream,
+    nickname: &str,
+    clients: &Arc<Mutex<HashMap<String, Client>>>
+) -> io::Result<()> {
+    // Notify the client being disconnected
+    let mut banned_stream = stream.try_clone()?;
+    banned_stream.write_all("You sent a prohibited message and will be disconnected.\n".as_bytes())?;
+    banned_stream.flush()?;
+    
+    // Notify other clients and remove from client list
+    {
+        let mut clients_lock = clients.lock().unwrap();
+        let num_remaining = clients_lock.len() - 1;
+        
+        // Message for other clients
+        let notify_msg = format!(
+            "[{} was removed for prohibited message. {} users remain.]\n",
+            nickname, num_remaining
+        );
+        
+        // Send to all other clients
+        for (nick, client) in clients_lock.iter() {
+            if *nick != nickname {
+                let _ = client.send_message(&notify_msg);
+            }
+        }
+        
+        // Remove from client list
+        clients_lock.remove(nickname);
+        
+        println!("{} is removed for sending prohibited message. There are {} users now", 
+                nickname, num_remaining);
+    }
+    
+    Ok(())
 }
 
 // Process incoming messages from clients
@@ -140,44 +184,14 @@ fn handle_client(
         println!("Received from {}: cmd={}, content='{}', bytes={}", 
                  nickname, cmd, content, bytes_read);
 
+        // Check for prohibited content regardless of command type
+        if contains_prohibited_content(&content) {
+            disconnect_for_prohibited_content(&stream, &nickname, &clients)?;
+            return Ok(());
+        }
+
         match cmd {
             CMD_CHAT => {
-                // "I hate professor" 검사
-                if content.to_lowercase() == "i hate professor" {
-                    // 우선 해당 클라이언트에게만 알림 메시지 전송 (명확한 메시지)
-                    let mut banned_stream = stream.try_clone()?;
-                    banned_stream.write_all("You sent a prohibited message and will be disconnected.\n".as_bytes())?;
-                    banned_stream.flush()?;
-                    
-                    // 다른 클라이언트들에게 알림 (해당 클라이언트 제외)
-                    {
-                        let mut clients_lock = clients.lock().unwrap();
-                        let num_remaining = clients_lock.len() - 1;
-                        
-                        // 메시지 준비 - "disconnected" 단어 사용 안함
-                        let notify_msg = format!(
-                            "[{} was removed for prohibited message. {} users remain.]\n",
-                            nickname, num_remaining
-                        );
-                        
-                        // 다른 클라이언트들에게만 전송 (해당 클라이언트는 제외)
-                        for (nick, client) in clients_lock.iter() {
-                            if *nick != nickname {
-                                let _ = client.send_message(&notify_msg);
-                            }
-                        }
-                        
-                        // 클라이언트 목록에서 제거
-                        clients_lock.remove(&nickname);
-                        
-                        println!("{} is removed for sending prohibited message. There are {} users now", 
-                                nickname, num_remaining);
-                    }
-                    
-                    // 이 클라이언트의 메시지 처리 종료
-                    return Ok(());
-                }
-                
                 // 서버 콘솔에 메시지 출력
                 println!("{}: {}", nickname, content);
                 
@@ -361,6 +375,8 @@ fn main() -> io::Result<()> {
                     let mut stream_clone = stream.try_clone()?;
                     stream_clone.write_all(error_msg.as_bytes())?;
                     stream_clone.flush()?;
+                    println!("Connection from {}:{} rejected: chatting room full (max {} clients)", 
+                             client_addr.ip(), client_addr.port(), MAX_CLIENTS);
                     continue;
                 }
 
@@ -376,6 +392,8 @@ fn main() -> io::Result<()> {
                     let mut stream_clone = stream.try_clone()?;
                     stream_clone.write_all(error_msg.as_bytes())?;
                     stream_clone.flush()?;
+                    println!("Connection from {}:{} rejected: invalid nickname format '{}'", 
+                             client_addr.ip(), client_addr.port(), nickname);
                     continue;
                 }
 
@@ -386,6 +404,8 @@ fn main() -> io::Result<()> {
                     let mut stream_clone = stream.try_clone()?;
                     stream_clone.write_all(error_msg.as_bytes())?;
                     stream_clone.flush()?;
+                    println!("Connection from {}:{} rejected: nickname '{}' already in use", 
+                             client_addr.ip(), client_addr.port(), nickname);
                     continue;
                 }
 
