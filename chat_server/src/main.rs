@@ -22,7 +22,7 @@ const CMD_CHAT: u8 = 7;
 const MAX_CLIENTS: usize = 4;
 
 // Port to listen on - replace with your designated port number
-const PORT: u16 = 8080;
+const PORT: u16 = 20417;
 
 // Structure to store client information
 struct Client {
@@ -137,16 +137,6 @@ fn handle_client(
             num_users
         );
     }
-    {
-        let num_users = clients.lock().unwrap().len();
-        println!(
-            "{} joined from {}:{}. There are {} users in the room",
-            nickname,
-            client_addr.ip(),
-            client_addr.port(),
-            num_users
-        );
-    }
 
     // send welcome message to the new client
     {
@@ -230,7 +220,10 @@ fn handle_client(
                 // message format
                 list_msg.push_str("Connected users:\n");
                 for (nick, client) in clients_lock.iter() {
-                    list_msg.push_str(&format!("{}, {}, {}\n", nick, client.ip, client.port));
+                    list_msg.push_str(&format!(
+                        "{} ({}), {}, {}\n",
+                        nick, client.nickname, client.ip, client.port
+                    ));
                 }
 
                 // send the message to the requesting client
@@ -267,7 +260,7 @@ fn handle_client(
                     let message = &content[space_idx + 1..];
 
                     if except_nick == nickname {
-                        // 자기 자신 제외: 잘못된 명령으로 간주
+                        // can't except client itself
                         println!("invalid command: \\except {} {}", except_nick, message);
                         if let Some(client) = clients.lock().unwrap().get(&nickname) {
                             let _ = client.send_message("invalid command\n");
@@ -373,11 +366,7 @@ fn handle_client(
                 break;
             }
             _ => {
-                // invaild or wrong format command
-                println!("invalid command: \\unknown {}", content);
-                if let Some(client) = clients.lock().unwrap().get(&nickname) {
-                    let _ = client.send_message("invalid command\n");
-                }
+                println!("Invalid command: {}", cmd);
             }
         }
     }

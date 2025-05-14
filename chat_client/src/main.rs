@@ -11,8 +11,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 // server configuration
-const SERVER_ADDRESS: &str = "127.0.0.1";
-const SERVER_PORT: u16 = 8080;
+const SERVER_ADDRESS: &str = "nsl5.cau.ac.kr";
+const SERVER_PORT: u16 = 20417;
 
 // Command codes - 1 byte encoding for commands
 const CMD_LIST: u8 = 1;
@@ -40,7 +40,7 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
     let mut line = String::new();
 
     // save the nickname for later use
-    let my_nickname = state.lock().unwrap().nickname.clone();
+    let _my_nickname = state.lock().unwrap().nickname.clone();
 
     while state.lock().unwrap().connected {
         line.clear();
@@ -49,8 +49,7 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
                 // Connection closed by server
                 println!("Disconnected from server.");
                 state.lock().unwrap().connected = false;
-                process::exit(0); // 연결이 끊어지면 즉시 종료
-                break;
+                process::exit(0); // immadiately exit
             }
             Ok(_) => {
                 // Print the received message without adding a newline
@@ -71,8 +70,7 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
             Err(e) => {
                 eprintln!("Error reading from server: {}", e);
                 state.lock().unwrap().connected = false;
-                process::exit(1); // 오류 발생 시 종료
-                break;
+                process::exit(1); // exit with error
             }
         }
     }
@@ -81,7 +79,7 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
 // Function to handle user input and send messages to the server
 fn handle_user_input(
     mut stream: TcpStream,
-    nickname: &str,
+    _nickname: &str,
     state: Arc<Mutex<ClientState>>,
 ) -> io::Result<()> {
     let stdin = io::stdin();
@@ -95,7 +93,7 @@ fn handle_user_input(
         while check_state.lock().unwrap().connected {
             thread::sleep(Duration::from_millis(500));
 
-            // 서버 연결 확인
+            // check if the connection is still alive
             if let Err(_) = check_stream.peer_addr() {
                 println!("\nLost connection to server. Terminating.");
                 process::exit(0);
@@ -238,7 +236,7 @@ fn setup_ctrl_c_handler(stream: TcpStream) {
         let _ = stream_clone.write_all(b"\n");
         let _ = stream_clone.flush();
 
-        println!("gg~");
+        println!("\ngg~");
         process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");
