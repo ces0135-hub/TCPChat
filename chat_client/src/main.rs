@@ -1,5 +1,6 @@
-// Name: Your Name
-// Student ID: Your Student ID
+// Name: BaekSungHyun
+// Student ID: 20220417
+// “Network Applications and Design” Homework Assignment #4
 
 use std::env;
 use std::io::{self, BufRead, BufReader, Write};
@@ -9,9 +10,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-// Server configuration - replace port with your designated port number
-const SERVER_ADDRESS: &str = "127.0.0.1";  // Changed to required server address
-const SERVER_PORT: u16 = 8080; // Replace with your designated port
+// server configuration
+const SERVER_ADDRESS: &str = "127.0.0.1";
+const SERVER_PORT: u16 = 8080;
 
 // Command codes - 1 byte encoding for commands
 const CMD_LIST: u8 = 1;
@@ -37,8 +38,8 @@ fn contains_prohibited_content(content: &str) -> bool {
 fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    
-    // 내 닉네임 저장
+
+    // save the nickname for later use
     let my_nickname = state.lock().unwrap().nickname.clone();
 
     while state.lock().unwrap().connected {
@@ -54,13 +55,14 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
             Ok(_) => {
                 // Print the received message without adding a newline
                 print!("{}", line);
-                
+
                 // Flush stdout to ensure the message is displayed immediately
                 let _ = io::stdout().flush();
-                
-                // 수정된 부분: 자신에게 직접적으로 관련된 메시지만 체크
-                if line.contains("you are banned by") || 
-                   line.contains("You sent a prohibited message") {
+
+                // check for specific messages
+                if line.contains("you are banned by")
+                    || line.contains("You sent a prohibited message")
+                {
                     println!("You have been removed from the chat room.");
                     state.lock().unwrap().connected = false;
                     process::exit(0); // 즉시 종료
@@ -78,21 +80,21 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
 
 // Function to handle user input and send messages to the server
 fn handle_user_input(
-    mut stream: TcpStream, 
+    mut stream: TcpStream,
     nickname: &str,
-    state: Arc<Mutex<ClientState>>
+    state: Arc<Mutex<ClientState>>,
 ) -> io::Result<()> {
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines();
 
-    // 연결 확인 스레드 추가
+    // add a thread to check the connection status
     let check_state = Arc::clone(&state);
     let check_stream = stream.try_clone()?;
-    
+
     thread::spawn(move || {
         while check_state.lock().unwrap().connected {
             thread::sleep(Duration::from_millis(500));
-            
+
             // 서버 연결 확인
             if let Err(_) = check_stream.peer_addr() {
                 println!("\nLost connection to server. Terminating.");
@@ -104,18 +106,20 @@ fn handle_user_input(
     while state.lock().unwrap().connected {
         if let Some(line) = lines.next() {
             let input = line?;
-            
+
             // Check for prohibited content in any input
             if contains_prohibited_content(&input) {
-                println!("Warning: Your message contains a prohibited phrase. You will be disconnected.");
+                println!(
+                    "Warning: Your message contains a prohibited phrase. You will be disconnected."
+                );
             }
-            
+
             // Process the input
             if input.starts_with('\\') {
                 // Command handling
                 let parts: Vec<&str> = input.splitn(2, ' ').collect();
                 let command = parts[0];
-                
+
                 match command {
                     "\\list" => {
                         stream.write_all(&[CMD_LIST])?;
@@ -127,18 +131,18 @@ fn handle_user_input(
                             println!("Usage: \\to <nickname> <message>");
                             continue;
                         }
-                        
+
                         let rest = parts[1];
                         let nick_msg: Vec<&str> = rest.splitn(2, ' ').collect();
-                        
+
                         if nick_msg.len() < 2 {
                             println!("Usage: \\to <nickname> <message>");
                             continue;
                         }
-                        
+
                         let target = nick_msg[0];
                         let message = nick_msg[1];
-                        
+
                         let full_msg = format!("{} {}", target, message);
                         stream.write_all(&[CMD_TO])?;
                         stream.write_all(full_msg.as_bytes())?;
@@ -150,18 +154,18 @@ fn handle_user_input(
                             println!("Usage: \\except <nickname> <message>");
                             continue;
                         }
-                        
+
                         let rest = parts[1];
                         let nick_msg: Vec<&str> = rest.splitn(2, ' ').collect();
-                        
+
                         if nick_msg.len() < 2 {
                             println!("Usage: \\except <nickname> <message>");
                             continue;
                         }
-                        
+
                         let target = nick_msg[0];
                         let message = nick_msg[1];
-                        
+
                         let full_msg = format!("{} {}", target, message);
                         stream.write_all(&[CMD_EXCEPT])?;
                         stream.write_all(full_msg.as_bytes())?;
@@ -173,7 +177,7 @@ fn handle_user_input(
                             println!("Usage: \\ban <nickname>");
                             continue;
                         }
-                        
+
                         let target = parts[1].trim();
                         stream.write_all(&[CMD_BAN])?;
                         stream.write_all(target.as_bytes())?;
@@ -182,12 +186,12 @@ fn handle_user_input(
                     }
                     "\\ping" => {
                         let start = Instant::now();
-                        
+
                         // Send ping command
                         stream.write_all(&[CMD_PING])?;
                         stream.write_all(b"\n")?;
                         stream.flush()?;
-                        
+
                         // Wait for response and calculate RTT
                         thread::sleep(Duration::from_millis(100));
                         let elapsed = start.elapsed();
@@ -198,21 +202,21 @@ fn handle_user_input(
                     }
                 }
             } else {
-                // Regular chat message
-                // 메시지가 비어있지 않을 경우에만 처리
+                // if the input is not a command, send it as a message
                 if !input.trim().is_empty() {
-                    // 메시지 전송
+                    // send the message to the server
                     stream.write_all(&[CMD_CHAT])?;
                     stream.write_all(input.as_bytes())?;
                     stream.write_all(b"\n")?;
-                    
+                    stream.flush()?;
+
                     if let Err(e) = stream.flush() {
                         eprintln!("Error sending message: {}", e);
                         state.lock().unwrap().connected = false;
                         process::exit(1);
                     }
-                    
-                    // 금지된 메시지 보내고 잠시 대기 후 종료 준비
+
+                    // Check for prohibited content
                     if contains_prohibited_content(&input) {
                         thread::sleep(Duration::from_millis(500));
                     }
@@ -220,23 +224,24 @@ fn handle_user_input(
             }
         }
     }
-    
+
     Ok(())
 }
 
 // Setup a Ctrl+C handler
 fn setup_ctrl_c_handler(stream: TcpStream) {
     let mut stream_clone = stream.try_clone().unwrap();
-    
+
     ctrlc::set_handler(move || {
         // Send exit message to the server
         let _ = stream_clone.write_all(&[CMD_EXIT]);
         let _ = stream_clone.write_all(b"\n");
         let _ = stream_clone.flush();
-        
+
         println!("gg~");
         process::exit(0);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 }
 
 fn main() -> io::Result<()> {
@@ -246,62 +251,64 @@ fn main() -> io::Result<()> {
         eprintln!("Usage: {} <nickname>", args[0]);
         process::exit(1);
     }
-    
+
     let nickname = &args[1];
-    
+
     // Validate nickname
     if nickname.len() > 10 || nickname.contains(|c: char| !c.is_ascii_alphanumeric()) {
-        eprintln!("Nickname must be <= 10 characters, English only, no spaces or special characters");
+        eprintln!(
+            "Nickname must be <= 10 characters, English only, no spaces or special characters"
+        );
         process::exit(1);
     }
-    
+
     // Connect to the server
     let server_addr = format!("{}:{}", SERVER_ADDRESS, SERVER_PORT);
     match TcpStream::connect(&server_addr) {
         Ok(stream) => {
             println!("Connected to server at {}", server_addr);
-            
-            // TCP_NODELAY 설정 (작은 패킷을 즉시 전송)
+
+            // Set TCP_NODELAY to disable Nagle's algorithm
             if let Err(e) = stream.set_nodelay(true) {
                 eprintln!("Warning: Failed to set TCP_NODELAY: {}", e);
             }
-            
+
             // First, send the nickname
             let mut stream_clone = stream.try_clone()?;
             stream_clone.write_all(nickname.as_bytes())?;
             stream_clone.write_all(b"\n")?;
             stream_clone.flush()?;
-            
+
             // Read the initial response
             let mut reader = BufReader::new(&stream);
             let mut response = String::new();
             reader.read_line(&mut response)?;
-            
+
             // Check for error responses
             if response.contains("cannot connect") {
                 println!("{}", response.trim());
                 process::exit(1);
             }
-            
+
             // Print the welcome message
             print!("{}", response);
-            
+
             // Create shared state for the client
-            let state = Arc::new(Mutex::new(ClientState { 
+            let state = Arc::new(Mutex::new(ClientState {
                 connected: true,
-                nickname: nickname.clone()
+                nickname: nickname.clone(),
             }));
-            
+
             // Setup Ctrl+C handler
             setup_ctrl_c_handler(stream.try_clone()?);
-            
+
             // Spawn a thread to receive messages
             let receive_stream = stream.try_clone()?;
             let receive_state = Arc::clone(&state);
             thread::spawn(move || {
                 receive_messages(receive_stream, receive_state);
             });
-            
+
             // Handle user input
             handle_user_input(stream, nickname, state)?;
         }
@@ -310,6 +317,6 @@ fn main() -> io::Result<()> {
             process::exit(1);
         }
     }
-    
+
     Ok(())
 }
