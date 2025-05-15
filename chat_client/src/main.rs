@@ -53,7 +53,14 @@ fn receive_messages(stream: TcpStream, state: Arc<Mutex<ClientState>>) {
             }
             Ok(_) => {
                 // Print the received message without adding a newline
-                print!("{}", line);
+                let nickname = state.lock().unwrap().nickname.clone();
+
+                if line.contains(&format!("{} left the room", nickname)) {
+                    // ignore the message that the user left the room
+                    continue;
+                }
+
+                println!("{}", line.trim_end());
 
                 // Flush stdout to ensure the message is displayed immediately
                 let _ = io::stdout().flush();
